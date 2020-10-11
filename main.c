@@ -10,6 +10,7 @@
 
 #include <stdlib.h>
 #include <stdio.h>
+#include <string.h>
 
 #include <pthread.h>
 #include <semaphore.h>
@@ -35,6 +36,8 @@ buffer_item buffer[BUFFER_SIZE];
 
 /* buffer counter */
 int counter;
+
+int is_end = 0;
 
 pthread_t tid;       //Thread ID
 pthread_attr_t attr; //Set of thread attributes
@@ -76,13 +79,17 @@ void initializeData() {
     /* Create the mutex lock */
     pthread_mutex_init(&mutex, NULL);
 
+
     /* Create the full semaphore and initialize to 0 */
     /* Create the empty semaphore and initialize to BUFFER_SIZE */
 
     // TODO
+    sem_init(&full, 0, 0);
+    sem_init(&empty, 0, BUFFER_SIZE);
 
     /* Get the default attributes */
     pthread_attr_init(&attr);
+    pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
 
     /* init buffer */
     counter = 0;
@@ -91,8 +98,7 @@ void initializeData() {
 /* Producer Thread */
 void *producer(void *param) {
     buffer_item item;
-
-    while(TRUE) {
+    while(!is_end) {
         /* sleep for a random period of time */
         int rNum = rand() / RAND_DIVISOR;
         sleep(rNum);
@@ -101,20 +107,37 @@ void *producer(void *param) {
         item = rand();
 
         // TODO
+        // Is some empty space to fill?
+        // If yes, continue, block otherwise.
+        sem_wait(&empty);
+        pthread_mutex_lock(&mutex);
+        int return_value = insert_item(item);
+        pthread_mutex_unlock(&mutex);
+        // Increases the value of the full semaphore by one.
+        sem_post(&full);
     }
+    printf("vlakno producer konci \n");
+    pthread_exit(NULL);
 }
 
 /* Consumer Thread */
 void *consumer(void *param) {
     buffer_item item;
 
-    while(TRUE) {
+    while(!is_end) {
         /* sleep for a random period of time */
         int rNum = rand() / RAND_DIVISOR;
         sleep(rNum);
-
         // TODO
+        buffer_item  removed_item = 0;
+        sem_wait(&full);
+        pthread_mutex_lock(&mutex);
+        int return_value = remove_item(&removed_item);
+        pthread_mutex_unlock(&mutex);
+        sem_post(&empty);
     }
+    printf("vlakno consumer konci \n");
+    pthread_exit(NULL);
 }
 
 
@@ -139,23 +162,61 @@ int main(int argc, char *argv[]) {
         numCons = atoi(argv[3]); /* Number of consumer threads */
     }
 
+    int threads_cnt = 0;
+    pthread_t * threads = (pthread_t *) malloc(sizeof(pthread_t) * (numCons + numProd));
+
     /* Initialize the app */
     initializeData();
 
     /* Create the producer threads */
     for(i = 0; i < numProd; i++) {
         /* Create the thread */
-        pthread_create(&tid, &attr, producer,NULL);
+        int return_value = pthread_create(&threads[threads_cnt], &attr, (void * (*) (void *)) producer,NULL);
+
+        if (return_value == 0) {
+            printf("Vlakno vytvoreno\n");
+        } else {
+            printf("pthread_create() fail %s", strerror(return_value));
+        }
+
+        threads_cnt++;
     }
 
     /* Create the consumer threads */
     for(i = 0; i < numCons; i++) {
         /* Create the thread */
-        pthread_create(&tid, &attr, consumer,NULL);
+        int return_value = pthread_create(&threads[threads_cnt], &attr, (void * (*) (void *)) consumer,NULL);
+        if (return_value == 0) {
+            printf("Vlakno vytvoreno\n");
+        } else {
+            //printf("pthread_create() fail %s", strerror(return_value));
+            printf("pthread_create() fail %s", strerror(return_value));
+        }
+
+        threads_cnt++;
     }
 
     /* Sleep for the specified amount of time in milliseconds */
     sleep(mainSleepTime);
+
+    is_end = 1;
+
+    threads_cnt = 0;
+    for(i = 0; i < numProd; i++) {
+        pthread_join(threads[threads_cnt], NULL);
+        threads_cnt++;
+    }
+    for(i = 0; i < numCons; i++) {
+        pthread_join(threads[threads_cnt], NULL);
+        threads_cnt++;
+    }
+
+    sem_destroy(&full);
+    sem_destroy(&empty);
+
+    pthread_attr_destroy(&attr);
+
+    free(threads);
 
     /* Exit the program */
     printf("Exit the program\n");
