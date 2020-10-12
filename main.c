@@ -110,6 +110,8 @@ void *producer(void *param) {
         /* generate a random number */
         item = rand();
 
+        // for cond variables: podminka bude znit, pokud je buffer plny, tak cekej, jinak produkuj
+
         // TODO
         // Is some empty space to fill?
         // If yes, continue, block otherwise.
@@ -138,6 +140,9 @@ void *consumer(void *param) {
         int rNum = rand() / RAND_DIVISOR;
         //sleep(rNum);
         // TODO
+        // for cond variables: podminka bude znit, pokud je buffer prazdny, tak cekej, jinak konzumuj
+
+
         buffer_item  removed_item = 0;
         sem_wait(&full);
         pthread_mutex_lock(&mutex);
