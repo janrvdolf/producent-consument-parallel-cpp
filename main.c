@@ -97,11 +97,15 @@ void initializeData() {
 
 /* Producer Thread */
 void *producer(void *param) {
+    long int thread_id = (long int) param;
     buffer_item item;
+
+    printf("Inicializoval producer thread <%ld>\n", thread_id);
+
     while(!is_end) {
         /* sleep for a random period of time */
         int rNum = rand() / RAND_DIVISOR;
-        sleep(rNum);
+        //sleep(rNum);
 
         /* generate a random number */
         item = rand();
@@ -112,31 +116,39 @@ void *producer(void *param) {
         sem_wait(&empty);
         pthread_mutex_lock(&mutex);
         int return_value = insert_item(item);
+        printf("Producer <%ld> provedl insert(%d)\n", thread_id, item);
         pthread_mutex_unlock(&mutex);
         // Increases the value of the full semaphore by one.
         sem_post(&full);
     }
-    printf("vlakno producer konci \n");
+
+    printf("Producer <%ld> konci\n", thread_id);
+
     pthread_exit(NULL);
 }
 
 /* Consumer Thread */
 void *consumer(void *param) {
+    long int thread_id = (long int) param;
     buffer_item item;
+    printf("Inicializoval consumer thread <%ld>\n", thread_id);
 
     while(!is_end) {
         /* sleep for a random period of time */
         int rNum = rand() / RAND_DIVISOR;
-        sleep(rNum);
+        //sleep(rNum);
         // TODO
         buffer_item  removed_item = 0;
         sem_wait(&full);
         pthread_mutex_lock(&mutex);
         int return_value = remove_item(&removed_item);
+        printf("Comsumer <%ld> provedl remove\n", thread_id);
         pthread_mutex_unlock(&mutex);
         sem_post(&empty);
     }
-    printf("vlakno consumer konci \n");
+
+    printf("Comsumer <%ld> konci\n", thread_id);
+
     pthread_exit(NULL);
 }
 
@@ -162,7 +174,7 @@ int main(int argc, char *argv[]) {
         numCons = atoi(argv[3]); /* Number of consumer threads */
     }
 
-    int threads_cnt = 0;
+    long int threads_cnt = 0; // `long int` proto, aby delka datoveho typu sedel s `void *`
     pthread_t * threads = (pthread_t *) malloc(sizeof(pthread_t) * (numCons + numProd));
 
     /* Initialize the app */
@@ -171,8 +183,7 @@ int main(int argc, char *argv[]) {
     /* Create the producer threads */
     for(i = 0; i < numProd; i++) {
         /* Create the thread */
-        int return_value = pthread_create(&threads[threads_cnt], &attr, (void * (*) (void *)) producer,NULL);
-
+        int return_value = pthread_create(&threads[threads_cnt], &attr, (void * (*) (void *)) producer, (void *) threads_cnt);
         if (return_value == 0) {
             printf("Vlakno vytvoreno\n");
         } else {
@@ -185,7 +196,7 @@ int main(int argc, char *argv[]) {
     /* Create the consumer threads */
     for(i = 0; i < numCons; i++) {
         /* Create the thread */
-        int return_value = pthread_create(&threads[threads_cnt], &attr, (void * (*) (void *)) consumer,NULL);
+        int return_value = pthread_create(&threads[threads_cnt], &attr, (void * (*) (void *)) consumer, (void *) threads_cnt);
         if (return_value == 0) {
             printf("Vlakno vytvoreno\n");
         } else {
