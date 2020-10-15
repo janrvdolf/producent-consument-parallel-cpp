@@ -28,8 +28,9 @@ typedef int buffer_item;
 /* The mutex lock */
 pthread_mutex_t mutex;
 
-/* the semaphores */
-sem_t full, empty;
+/* the conditional vars */
+//sem_t full, empty;
+pthread_cond_t full, empty;
 
 /* the buffer */
 buffer_item buffer[BUFFER_SIZE];
@@ -49,9 +50,9 @@ void *consumer(void *param); /* the consumer thread */
 int insert_item(buffer_item item) {
     /* When the buffer is not full add the item
        and increment the counter*/
-    if(counter < BUFFER_SIZE) {
-        buffer[counter] = item;
+    if(counter < (BUFFER_SIZE - 1)) {
         counter++;
+        buffer[counter] = item;
         return 0;
     }
     else { /* Error the buffer is full */
@@ -63,8 +64,8 @@ int insert_item(buffer_item item) {
 int remove_item(buffer_item *item) {
     /* When the buffer is not empty remove the item
        and decrement the counter */
-    if(counter > 0) {
-        *item = buffer[(counter-1)];
+    if(counter >= 0) {
+        *item = buffer[counter];
         counter--;
         return 0;
     }
@@ -75,24 +76,22 @@ int remove_item(buffer_item *item) {
 
 
 void initializeData() {
-
     /* Create the mutex lock */
     pthread_mutex_init(&mutex, NULL);
 
-
     /* Create the full semaphore and initialize to 0 */
     /* Create the empty semaphore and initialize to BUFFER_SIZE */
-
-    // TODO
-    sem_init(&full, 0, 0);
-    sem_init(&empty, 0, BUFFER_SIZE);
+//    sem_init(&full, 0, 0);
+//    sem_init(&empty, 0, BUFFER_SIZE);
+    pthread_cond_init(&full, NULL);
+    pthread_cond_init(&empty, NULL);
 
     /* Get the default attributes */
     pthread_attr_init(&attr);
     pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
 
     /* init buffer */
-    counter = 0;
+    counter = -1;
 }
 
 /* Producer Thread */
@@ -101,27 +100,33 @@ void *producer(void *param) {
     buffer_item item;
 
     printf("Inicializoval producer thread <%ld>\n", thread_id);
-
     while(!is_end) {
         /* sleep for a random period of time */
         int rNum = rand() / RAND_DIVISOR;
-        //sleep(rNum);
+        sleep(rNum);
 
         /* generate a random number */
         item = rand();
 
-        // for cond variables: podminka bude znit, pokud je buffer plny, tak cekej, jinak produkuj
-
-        // TODO
         // Is some empty space to fill?
         // If yes, continue, block otherwise.
-        sem_wait(&empty);
         pthread_mutex_lock(&mutex);
+        // TODO producer is not going to produce if the buffer is full
+        while (counter == (BUFFER_SIZE - 1)) {
+            pthread_cond_wait(&full, &mutex);
+        }
+
         int return_value = insert_item(item);
-        printf("Producer <%ld> provedl insert(%d)\n", thread_id, item);
+        if (return_value != 0) {
+            printf("Producer <%ld> neprovedl insert\n", thread_id);
+        } else {
+            printf("Producer <%ld> provedl insert hodnoty %d na pozici %d\n", thread_id, item, counter);
+        }
+
+        pthread_cond_signal(&empty);
+
         pthread_mutex_unlock(&mutex);
-        // Increases the value of the full semaphore by one.
-        sem_post(&full);
+
     }
 
     printf("Producer <%ld> konci\n", thread_id);
@@ -138,18 +143,29 @@ void *consumer(void *param) {
     while(!is_end) {
         /* sleep for a random period of time */
         int rNum = rand() / RAND_DIVISOR;
-        //sleep(rNum);
-        // TODO
-        // for cond variables: podminka bude znit, pokud je buffer prazdny, tak cekej, jinak konzumuj
+        sleep(rNum);
 
+        // TODO do not consume if the buffer is empty
 
         buffer_item  removed_item = 0;
-        sem_wait(&full);
+
         pthread_mutex_lock(&mutex);
+
+        while (counter < 0) {
+            pthread_cond_wait(&empty, &mutex);
+        }
+
         int return_value = remove_item(&removed_item);
-        printf("Comsumer <%ld> provedl remove\n", thread_id);
+        if (return_value != 0) {
+            printf("Comsumer <%ld> neprovedl remove\n", thread_id);
+        } else {
+            printf("Comsumer <%ld> provedl remove hodnoty %d z pozice %d\n", thread_id, removed_item, counter + 1);
+        }
+
+        pthread_cond_signal(&full);
+
         pthread_mutex_unlock(&mutex);
-        sem_post(&empty);
+
     }
 
     printf("Comsumer <%ld> konci\n", thread_id);
@@ -226,9 +242,6 @@ int main(int argc, char *argv[]) {
         pthread_join(threads[threads_cnt], NULL);
         threads_cnt++;
     }
-
-    sem_destroy(&full);
-    sem_destroy(&empty);
 
     pthread_attr_destroy(&attr);
 
